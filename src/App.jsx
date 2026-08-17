@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Activity, ShieldCheck, FileText, Send, Terminal, DollarSign, Clock, Plus, ChevronRight } from 'lucide-react';
+import { Activity, ShieldCheck, FileText, Send, Terminal, DollarSign, Clock, Plus, ChevronRight, MoreVertical, Trash2 } from 'lucide-react';
 
 const INITIAL_INVOICES = [
   { id: 'INV-1042', client: 'Acme Corp', amount: 4500, daysLate: 15, status: 'Overdue' },
@@ -9,6 +9,12 @@ export default function App() {
   const [invoices, setInvoices] = useState(INITIAL_INVOICES);
   const [loadingId, setLoadingId] = useState(null);
   const [agentLog, setAgentLog] = useState(null);
+  const [openMenuId, setOpenMenuId] = useState(null);
+
+  const deleteInvoice = (id) => {
+    setInvoices(invoices.filter(inv => inv.id !== id));
+    if (openMenuId === id) setOpenMenuId(null);
+  };
 
   const [newClient, setNewClient] = useState('');
   const [newAmount, setNewAmount] = useState('');
@@ -158,19 +164,28 @@ export default function App() {
                         </span>
                       </div>
                     </div>
-                    <button 
-                      onClick={() => runAgent(invoice)}
-                      disabled={loadingId === invoice.id || invoice.status === 'Draft Ready'}
-                      className="relative bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:bg-slate-200 disabled:text-slate-500 shadow-sm hover:shadow-md hover:shadow-indigo-200 flex items-center gap-2"
-                    >
-                      {loadingId === invoice.id ? (
-                        <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> Processing...</>
-                      ) : invoice.status === 'Draft Ready' ? (
-                        <><ShieldCheck className="w-4 h-4"/> Cleared</>
-                      ) : (
-                        <><Send className="w-4 h-4"/> Dispatch Agent</>
-                      )}
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button 
+                        onClick={() => runAgent(invoice)}
+                        disabled={loadingId === invoice.id || invoice.status === 'Draft Ready'}
+                        className="relative bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:bg-slate-200 disabled:text-slate-500 shadow-sm hover:shadow-md hover:shadow-indigo-200 flex items-center gap-2"
+                      >
+                        {loadingId === invoice.id ? (
+                          <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> Processing...</>
+                        ) : invoice.status === 'Draft Ready' ? (
+                          <><ShieldCheck className="w-4 h-4"/> Cleared</>
+                        ) : (
+                          <><Send className="w-4 h-4"/> Dispatch Agent</>
+                        )}
+                      </button>
+
+                      <button 
+                        onClick={() => deleteInvoice(invoice.id)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 px-3 py-2.5 rounded-xl transition-all flex items-center gap-1.5 text-sm font-semibold border border-transparent hover:border-red-100"
+                      >
+                        <Trash2 className="w-4 h-4"/> Delete
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
