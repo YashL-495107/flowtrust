@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LayoutGrid, FileText, Bot, MessageSquare, LogOut, Settings, Terminal, Trash2 } from 'lucide-react';
 import Auth from './components/Auth';
+import { supabase } from './lib/supabaseClient';
 
 const INITIAL_INVOICES = [
   { id: 'INV-1042', client: 'Acme Corp', amount: 4500, daysLate: 15, status: 'Overdue' },
@@ -8,35 +9,108 @@ const INITIAL_INVOICES = [
 ];
 
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [invoices, setInvoices] = useState(INITIAL_INVOICES);
+  const [session, setSession] = useState(null);
+  const [initialLoading, setInitialLoading] = useState(true);
+  
+  const [invoices, setInvoices] = useState([]);
   const [loadingId, setLoadingId] = useState(null);
   const [agentLog, setAgentLog] = useState(null);
-  
-  // Loading state for initial fetch simulation
-  const [initialLoading, setInitialLoading] = useState(false); // set true to test loading
+
+  const fetchInvoices = async (userId) => {
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('*')
+      .eq('user_id', userId);
+    
+    if (data) setInvoices(data);
+  };
+
+  useEffect(() => {
+
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setSession(session);
+      if (session?.user) {
+        await fetchInvoices(session.user.id);
+      }
+      setInitialLoading(false);
+    };
+
+    checkSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      setSession(session);
+      if (session?.user) {
+        await fetchInvoices(session.user.id);
+      } else {
+        setInvoices([]);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const [newClient, setNewClient] = useState('');
   const [newAmount, setNewAmount] = useState('');
   const [newDays, setNewDays] = useState('');
+  const [formError, setFormError] = useState('');
 
-  const deleteInvoice = (id) => {
-    setInvoices(invoices.filter(inv => inv.id !== id));
+  const deleteInvoice = async (id) => {
+    const { data, error } = await supabase
+      .from('invoices')
+      .delete()
+      .eq('id', id);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) await fetchInvoices(user.id);
   };
 
-  const handleAddInvoice = (e) => {
+  const handleAddInvoice = async (e) => {
     e.preventDefault();
-    if (!newClient || !newAmount || !newDays) return;
+    setFormError('');
+
+    if (!newClient || !newAmount || !newDays) {
+      setFormError('All fields are required.');
+      return;
+    }
+
+    const parsedAmount = parseFloat(newAmount);
+    const parsedDays = parseInt(newDays, 10);
+
+    if (isNaN(parsedAmount) || isNaN(parsedDays)) {
+      setFormError('Amount and Days Late must be valid numbers.');
+      return;
+    }
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setFormError('You must be logged in to add an invoice.');
+      return;
+    }
 
     const newInvoice = {
-      id: `INV-${Math.floor(Math.random() * 10000)}`,
+      // Removing hardcoded 'INV-xxx' id so Supabase can generate its own valid UUID 
+      // OR if it's text, we can keep it. To be safe against 22P02, we'll let Supabase handle id if it's a UUID.
+      // Wait, we need it to look like INV-xxx. If the db has it as UUID, it will fail.
+      // I'll send it without `id` so Postgres generates it automatically.
+      user_id: user.id,
       client: newClient,
-      amount: parseFloat(newAmount),
-      daysLate: parseInt(newDays),
+      amount: parsedAmount,
+      days_late: parsedDays,
       status: 'Overdue'
     };
 
-    setInvoices([...invoices, newInvoice]);
+    const { data, error } = await supabase
+      .from('invoices')
+      .insert([newInvoice]);
+      
+    if (error) {
+      setFormError(`Database error: ${error.message} (Code: ${error.code})`);
+      return;
+    }
+
+    await fetchInvoices(user.id);
+
     setNewClient('');
     setNewAmount('');
     setNewDays('');
@@ -86,8 +160,8 @@ export default function App() {
     return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
   };
 
-  if (!isAuthenticated) {
-    return <Auth onLogin={() => setIsAuthenticated(true)} />;
+  if (!session) {
+    return <Auth setSession={setSession} />;
   }
 
   if (initialLoading) {
@@ -219,7 +293,7 @@ export default function App() {
                   </a>
               </nav>
               <div className="mt-auto px-3">
-                  <button onClick={() => setIsAuthenticated(false)} className="w-full flex items-center justify-center lg:justify-start gap-3 px-3 py-2.5 text-sm font-medium text-muted hover:text-ink hover:bg-paper transition-colors">
+                  <button onClick={() => supabase.auth.signOut()} className="w-full flex items-center justify-center lg:justify-start gap-3 px-3 py-2.5 text-sm font-medium text-muted hover:text-ink hover:bg-paper transition-colors">
                       <LogOut className="w-5 h-5 text-center" /><span className="hidden lg:inline">Log Out</span>
                   </button>
               </div>
@@ -253,6 +327,7 @@ export default function App() {
                       {/* Add Invoice Form */}
                       <article className="bg-white border border-line rounded-lg p-5">
                           <h3 className="text-sm font-semibold text-ink mb-4">Add {invoices.length === 0 && 'Your First '}Invoice</h3>
+                          {formError && <p className="text-xs text-red-600 mb-3 bg-red-50 p-2 rounded">{formError}</p>}
                           <form onSubmit={handleAddInvoice}>
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
                                 <input type="text" value={newClient} onChange={e => setNewClient(e.target.value)} placeholder="Client Name" className="col-span-2 w-full px-3 py-2 text-sm bg-paper border border-line rounded-md focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal transition-all placeholder:text-muted" required />
@@ -439,15 +514,15 @@ export default function App() {
                                         <td className="px-6 py-3.5 font-medium text-ink">{inv.client}</td>
                                         <td className="px-6 py-3.5 font-medium text-ink">${inv.amount.toLocaleString()}.00</td>
                                         <td className="px-6 py-3.5">
-                                            <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${inv.daysLate > 0 ? 'text-rust' : 'text-sage'}`}>
-                                                <span className={`w-1.5 h-1.5 rounded-full ${inv.daysLate > 0 ? 'bg-rust' : 'bg-sage'}`}></span>
-                                                {inv.daysLate > 0 ? `${inv.daysLate} days` : 'Resolved'}
+                                            <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${inv.days_late > 0 ? 'text-rust' : 'text-sage'}`}>
+                                                <span className={`w-1.5 h-1.5 rounded-full ${inv.days_late > 0 ? 'bg-rust' : 'bg-sage'}`}></span>
+                                                {inv.days_late > 0 ? `${inv.days_late} days` : 'Resolved'}
                                             </span>
                                         </td>
                                         <td className="px-6 py-3.5">
-                                            <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${inv.daysLate > 0 ? 'text-rust' : 'text-sage'}`}>
-                                                <span className={`w-1.5 h-1.5 rounded-full ${inv.daysLate > 0 ? 'bg-rust' : 'bg-sage'}`}></span>
-                                                {inv.daysLate > 0 ? 'Low (24%)' : 'Cleared'}
+                                            <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${inv.days_late > 0 ? 'text-rust' : 'text-sage'}`}>
+                                                <span className={`w-1.5 h-1.5 rounded-full ${inv.days_late > 0 ? 'bg-rust' : 'bg-sage'}`}></span>
+                                                {inv.days_late > 0 ? 'Low (24%)' : 'Cleared'}
                                             </span>
                                         </td>
                                     </tr>

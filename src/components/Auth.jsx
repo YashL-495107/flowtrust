@@ -1,13 +1,43 @@
 import React, { useState } from 'react';
 import { ArrowRight } from 'lucide-react';
+import { supabase } from '../lib/supabaseClient';
 
-export default function Auth({ onLogin }) {
+export default function Auth({ setSession }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (onLogin) onLogin(email, password);
+    setErrorMsg('');
+
+    if (isSignUp) {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+      
+      if (error) {
+        setErrorMsg(error.message);
+      } else {
+        alert('Signup successful! You can now log in.');
+        setIsSignUp(false);
+      }
+    } else {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        setErrorMsg(error.message);
+      } else {
+        if (data.session) {
+          setSession(data.session);
+        }
+      }
+    }
   };
 
   return (
@@ -45,7 +75,13 @@ export default function Auth({ onLogin }) {
           </div>
 
           <h2 className="text-2xl font-semibold text-ink mb-2">Access the console</h2>
-          <p className="text-sm text-muted mb-10">Enter your credentials to manage your collection nodes.</p>
+          <p className="text-sm text-muted mb-6">Enter your credentials to manage your collection nodes.</p>
+
+          {errorMsg && (
+            <div className="bg-red-50 text-red-600 text-sm p-3 rounded mb-6 border border-red-200">
+              {errorMsg}
+            </div>
+          )}
 
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div>
@@ -62,7 +98,7 @@ export default function Auth({ onLogin }) {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted">Password</label>
-                <a href="#" className="text-[11px] font-semibold uppercase tracking-wider text-teal hover:text-teal-deep transition-colors">Forgot Access?</a>
+                {!isSignUp && <a href="#" className="text-[11px] font-semibold uppercase tracking-wider text-teal hover:text-teal-deep transition-colors">Forgot Access?</a>}
               </div>
               <input 
                 type="password" 
@@ -75,13 +111,15 @@ export default function Auth({ onLogin }) {
 
             <div className="pt-2">
               <button type="submit" className="w-full bg-teal text-white py-3.5 rounded-md font-medium hover:bg-teal-deep transition-all shadow-sm flex items-center justify-center gap-2">
-                Sign In to Node <ArrowRight className="w-4 h-4" />
+                {isSignUp ? 'Sign Up' : 'Sign In to Node'} <ArrowRight className="w-4 h-4" />
               </button>
             </div>
           </form>
 
-          <div className="mt-12 pt-12 border-t border-line">
-            <p className="text-sm text-muted">Don't have an instance? <a href="#" className="text-teal font-semibold hover:underline">Request enterprise access</a></p>
+          <div className="mt-12 pt-12 border-t border-line text-center">
+            <button onClick={() => setIsSignUp(!isSignUp)} className="text-sm text-teal font-semibold hover:underline">
+              {isSignUp ? 'Already have an account? Sign in' : "Don't have an instance? Request access"}
+            </button>
           </div>
         </div>
       </div>
